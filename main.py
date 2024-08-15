@@ -1,4 +1,3 @@
-from datetime import datetime
 import tkinter as tk
 import cv2
 from tkinter import ttk
@@ -8,17 +7,17 @@ import pickle
 import mediapipe as mp
 import os
 import pyttsx3
-import sklearn
 from asl_display import ASLDisplayFrame
 from testing_gesture import TestingApp
 from msg_history import MessageHistoryFrame
+import datetime
 
 def load_model(file_path):
     model_dict = pickle.load(open(file_path, 'rb'))
     return model_dict['model']
 
 right_model = load_model('./Model/right_trained_model.p')
-left_model = load_model('./Model/left_trained_model.p') 
+left_model = load_model('./Model/left_trained_model.p')
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
@@ -29,11 +28,14 @@ hands = mp_hands.Hands(static_image_mode=True, min_detection_confidence=0.3)
 labels_dict = {
     0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F', 6: 'G', 7: 'H', 8: 'I', 9: 'K',
     10: 'L', 11: 'M', 12: 'N', 13: 'O', 14: 'P', 15: 'Q', 16: 'R', 17: 'S', 18: 'T',
-    19: 'U', 20: 'V', 21: 'W', 22: 'X', 23: 'Y'
+    19: 'U', 20: 'V', 21: 'W', 22: 'X', 23: 'Y', 24: 'SPACE'
 }
 
 cap = None  # Initialize cap globally
 predicted_character = ""  # Initialize the predicted character variable
+
+time_limit = 5000
+save_timer = None
 
 # Function to exit the program
 def exit_program():
@@ -62,24 +64,30 @@ def open_msg_history():
 
 # Function to start the camera with ASL recognition
 def start_camera():
-    global cap
+    global cap, save_timer
     if cap is None:
         cap = cv2.VideoCapture(0)
         camera_frame_label.config(width=640, height=480)  # Resize the camera frame
         camera_frame_label.update_idletasks()  # Update the label
         update_camera_frame()
+        
+        # Start the timer for saving characters within the time limit
+        save_timer = root.after(time_limit, save_characters)
 
 # Function to stop the camera
 def stop_camera():
-    global cap
+    global cap, save_timer
     if cap is not None:
         cap.release()
         cap = None
         camera_frame_label.config(image=None)
 
+        # Cancel the save timer
+        root.after_cancel(save_timer)
+
 # Function to update the camera frame
 def update_camera_frame():
-    global camera_frame_label
+    global camera_frame_label, results, prediction
     global predicted_character  # Declare as global
     if cap is not None:
         ret, frame = cap.read()
@@ -140,12 +148,27 @@ def update_camera_frame():
             camera_frame_label.photo = photo
             camera_frame_label.after(10, update_camera_frame)  # Update the frame every 10 milliseconds
 
+# Function to check if hand landmarks are present
+def is_hand_present(results):
+    return results.multi_hand_landmarks is not None and len(results.multi_hand_landmarks) > 0
+
 # Function to save characters to the system_message_textbox
 def save_characters():
-    if cap is not None:
-        global system_message_textbox  # Declare as global
-        system_message_textbox.insert(tk.END, predicted_character)
+    global system_message_textbox, predicted_character, save_timer, reset_timer, prediction
+    if cap is not None and is_hand_present(results):
+        if int(prediction[0]) == 24:  # Check if the predicted character is space
+            system_message_textbox.insert(tk.END, " ")  # Insert a space
+        else:
+            system_message_textbox.insert(tk.END, predicted_character)
+
         system_message_textbox.see(tk.END)  # Scroll to the end
+
+        # Reset the timer for the next character
+        save_timer = root.after(time_limit, save_characters)
+    else:
+        # Cancel the existing timer and set a new one
+        root.after_cancel(save_timer)
+        save_timer = root.after(time_limit, save_characters)
 
 # Function to clear texts in the system_message_textbox
 def clear_texts():
@@ -266,11 +289,11 @@ message_buttons_frame = tk.Frame(bottom_right_frame)
 message_buttons_frame.grid(row=2, column=0, pady=10)
 
 # Create buttons for message control
-save_characters_button = tk.Button(message_buttons_frame, text="Save Characters", height=3, width=16, command=save_characters, font=("Helvetica", 12))
+#save_characters_button = tk.Button(message_buttons_frame, text="Save Characters", height=3, width=16, command=save_characters, font=("Helvetica", 12))
 clear_texts_button = tk.Button(message_buttons_frame, text="Clear Texts", height=3, width=16, command=clear_texts, font=("Helvetica", 12))
 save_history_button = tk.Button(message_buttons_frame, text="Save Messages", height=3, width=16, command=update_message_history, font=("Helvetica", 12))
 text_speech_button = tk.Button(message_buttons_frame, text="Text-to-Speech", height=3, width=16, command=text_to_speech, font=("Helvetica", 12))
-save_characters_button.pack(side="left", padx=10)
+#save_characters_button.pack(side="left", padx=10)
 clear_texts_button.pack(side="left", padx=10)
 save_history_button.pack(side="left", padx=10)
 text_speech_button.pack(side="left", padx=10)
